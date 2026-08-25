@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <directory path="Agent">
+      <pe-file path="GivenX.Agent.exe">
+        <authenticode-sign />
+      </pe-file>
+    </directory>
+    <directory path="UI">
+      <pe-file path="GivenX.UI.exe">
+        <authenticode-sign />
+      </pe-file>
+    </directory>
+    <directory path="Installer">
+      <powershell-file-set>
+        <include path="*.ps1" min-matches="5" max-matches="5" />
+        <for-each>
+          <authenticode-sign />
+        </for-each>
+      </powershell-file-set>
+    </directory>
+  </zip-file>
+</artifact-configuration>

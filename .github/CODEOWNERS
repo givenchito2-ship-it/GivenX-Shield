@@ -1,0 +1,5 @@
+* @givenchito2-ship-it
+/.github/ @givenchito2-ship-it
+/.signpath/ @givenchito2-ship-it
+/src/GivenX.Shared/SecureSecrets.cs @givenchito2-ship-it
+/build-install.ps1 @givenchito2-ship-it

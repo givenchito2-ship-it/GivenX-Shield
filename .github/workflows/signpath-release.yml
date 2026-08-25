@@ -1,0 +1,53 @@
+name: Crear release firmada con SignPath
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  sign-and-package:
+    runs-on: windows-latest
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v7
+      - name: Instalar .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Preparar entrada de firma
+        shell: pwsh
+        run: ./prepare-signing-input.ps1
+      - name: Subir artefacto sin firma
+        id: upload-unsigned
+        uses: actions/upload-artifact@v7
+        with:
+          name: GivenX-1.6.2-R9-signpath-input
+          path: signpath-input
+          if-no-files-found: error
+      - name: Solicitar firma a SignPath
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: givenx-windows
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signpath-output
+      - name: Verificar firmas y preparar release
+        shell: pwsh
+        run: ./prepare-signed-release.ps1
+      - name: Empaquetar instalador firmado
+        shell: pwsh
+        run: ./package-signed-release.ps1
+      - name: Publicar artefacto instalable
+        uses: actions/upload-artifact@v7
+        with:
+          name: GivenX-Shield-1.6.2-R9-Signed
+          path: dist/GivenX_Shield_1_6_2_R9_Signed.zip
+          if-no-files-found: error
+          retention-days: 30

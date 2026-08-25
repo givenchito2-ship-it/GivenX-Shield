@@ -1,0 +1,37 @@
+name: Compilar y verificar
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v7
+      - name: Instalar .NET 8
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Compilar en carpeta aislada
+        shell: pwsh
+        run: ./verify-build.ps1
+      - name: Verificar que no se publicaron secretos comunes
+        shell: pwsh
+        run: |
+          $tracked = git ls-files
+          $forbidden = $tracked | Where-Object { $_ -match '(?i)(signing-config\.json|\.pfx$|\.p12$|\.pem$|\.key$|secret-.+\.bin$|^\.env)' }
+          if ($forbidden) { throw "Archivos sensibles rastreados: $($forbidden -join ', ')" }
+      - name: Guardar compilación sin firma
+        uses: actions/upload-artifact@v7
+        with:
+          name: GivenX-1.6.2-R9-unsigned
+          path: publish-r9
+          if-no-files-found: error
+          retention-days: 14

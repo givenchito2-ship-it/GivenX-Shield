@@ -1,0 +1,46 @@
+# Visual Studio / .NET
+.vs/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.cache
+TestResults/
+
+# Compilaciones y paquetes generados
+publish-*/
+release-*/
+signpath-input/
+signpath-output/
+dist/
+*.zip
+*.tar.gz
+*.nupkg
+
+# Credenciales y certificados: nunca se publican
+signing-config.json
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+secret-*.bin
+.env
+.env.*
+
+# Datos locales de GivenX
+engines/
+trusted-engine-hashes.json
+install-manifest.json
+trusted-build-artifacts.json
+release-metadata.json
+*.log
+Diagnostics/
+Quarantine/
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

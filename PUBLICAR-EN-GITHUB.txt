@@ -1,0 +1,17 @@
+GIVENX SHIELD R9 - PUBLICAR EN GITHUB DESKTOP
+
+ESTE PAQUETE ES PARA PUBLICAR EL CODIGO. NO ES EL INSTALADOR FIRMADO.
+
+1. Extrae toda la carpeta GivenX-Shield-1.6.2-R9-GitHub-Ready.
+2. Abre GitHub Desktop.
+3. Pulsa File > Add local repository.
+4. Selecciona esta carpeta, la que contiene GivenXShield.sln y README.md.
+5. Si dice que no es un repositorio, pulsa create a repository here.
+6. Usa el nombre GivenX-Shield y no agregues otro README ni otra licencia.
+7. Crea el primer commit.
+8. Pulsa Publish repository y deja el repositorio PUBLICO.
+
+Antes de publicar no deben aparecer claves API, signing-config.json, certificados,
+carpetas bin/obj/publish/release/engines ni archivos secret-*.bin.
+
+Despues de publicar sigue docs\GITHUB-Y-SIGNPATH.md para solicitar la firma gratuita.

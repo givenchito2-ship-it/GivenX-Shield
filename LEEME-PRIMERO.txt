@@ -1,0 +1,20 @@
+GIVENX SHIELD 1.6.2-R9 - ANTES DE INSTALAR
+
+NO INSTALES EL PAQUETE DE CODIGO FUENTE DE GITHUB.
+
+La version publica instalable se llama:
+GivenX_Shield_1_6_2_R9_Signed.zip
+
+ORDEN CORRECTO
+
+1. Descarga el ZIP firmado desde Releases o desde el artefacto aprobado de GitHub.
+2. Extrae todo el ZIP en una carpeta nueva.
+3. Confirma que existe la carpeta release-r9 y el archivo SHA256SUMS.txt.
+4. Ejecuta INSTALAR-GIVENX.cmd.
+5. Si falta una firma valida o Windows bloquea la candidata, el instalador se detendra
+   antes de reemplazar la version que ya funciona.
+
+Nunca desactives Defender ni Control inteligente de aplicaciones para instalar GivenX.
+
+CONFIGURAR-FIRMA.cmd es solamente para desarrolladores que ya poseen un certificado
+local. La distribucion publica utiliza SignPath y no requiere que el usuario compre uno.

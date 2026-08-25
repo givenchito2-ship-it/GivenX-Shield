@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <Product>GivenX Shield</Product>
+    <Authors>Rony (GivenX) and contributors</Authors>
+    <Copyright>Copyright © 2026 GivenX Shield contributors</Copyright>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/givenchito2-ship-it/GivenX-Shield</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,15 @@
+<Sysmon schemaversion="4.90">
+  <HashAlgorithms>sha256</HashAlgorithms>
+  <EventFiltering>
+    <ProcessCreate onmatch="exclude"><Image condition="begin with">C:\Windows\System32\conhost.exe</Image></ProcessCreate>
+    <NetworkConnect onmatch="include"><Image condition="is not">System</Image></NetworkConnect>
+    <ImageLoad onmatch="include"><ImageLoaded condition="contains">\AppData\</ImageLoaded><ImageLoaded condition="contains">\Temp\</ImageLoaded></ImageLoad>
+    <CreateRemoteThread onmatch="include"><SourceImage condition="contains">\AppData\</SourceImage><SourceImage condition="contains">\Temp\</SourceImage><SourceImage condition="contains">\Downloads\</SourceImage></CreateRemoteThread>
+    <ProcessAccess onmatch="include"><TargetImage condition="end with">\lsass.exe</TargetImage></ProcessAccess>
+    <DriverLoad onmatch="exclude"><Signature condition="contains">Microsoft</Signature><Signature condition="contains">Windows</Signature></DriverLoad>
+    <FileCreate onmatch="include"><TargetFilename condition="contains">\Downloads\</TargetFilename><TargetFilename condition="contains">\Temp\</TargetFilename><TargetFilename condition="contains">\AppData\Roaming\</TargetFilename></FileCreate>
+    <RegistryEvent onmatch="include"><TargetObject condition="contains">\CurrentVersion\Run</TargetObject><TargetObject condition="contains">\Winlogon\</TargetObject><TargetObject condition="contains">\Image File Execution Options\</TargetObject></RegistryEvent>
+    <WmiEvent onmatch="include" />
+    <DnsQuery onmatch="exclude"><QueryName condition="end with">.local</QueryName></DnsQuery>
+  </EventFiltering>
+</Sysmon>

@@ -1,0 +1,34 @@
+name: Informe de error
+description: Reporta un fallo reproducible sin publicar claves ni datos privados.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: No adjuntes API keys, contraseñas, cookies, muestras de malware ni datos personales.
+  - type: input
+    id: version
+    attributes:
+      label: Versión de GivenX Shield
+      placeholder: 1.6.2-R9
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Versión de Windows
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducirlo
+      description: Explica qué hiciste, qué esperabas y qué ocurrió.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidencia sin secretos
+      description: Capturas o registros previamente revisados y censurados.

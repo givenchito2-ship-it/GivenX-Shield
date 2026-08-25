@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Vulnerabilidad de seguridad
+    url: https://github.com/givenchito2-ship-it/GivenX-Shield/security/advisories/new
+    about: No publiques vulnerabilidades ni datos sensibles en un issue público.
