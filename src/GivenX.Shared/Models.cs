@@ -64,6 +64,7 @@ public sealed record AgentState(DateTimeOffset UpdatedAt, bool AgentOnline, int 
     public bool PrimaryAntivirusActive { get; init; }
     public string CoverageMessage { get; init; } = "Esperando la comprobación de Windows Security Center.";
     public int CorrelatedIncidents { get; init; }
+    public string AgentVersion { get; init; } = "NO REPORTADA";
     public static AgentState Empty => new(DateTimeOffset.MinValue, false, 0, "INICIANDO", 0, 0, 0, null, 0, []);
 }
 

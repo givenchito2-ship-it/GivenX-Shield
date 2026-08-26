@@ -1,12 +1,13 @@
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 
 namespace GivenX.Shared;
 
 public static class KnownBenignActivity
 {
     static readonly object SignatureGate = new();
-    static readonly Dictionary<string, (DateTime WriteTimeUtc, bool Official)> SignatureCache = new(StringComparer.OrdinalIgnoreCase);
+    static readonly Dictionary<string, (DateTime WriteTimeUtc, DateTimeOffset ExpiresAt, bool Official)> SignatureCache = new(StringComparer.OrdinalIgnoreCase);
     static readonly Dictionary<string, (DateTime WriteTimeUtc, DateTimeOffset ExpiresAt, bool Trusted)> ExplicitTrustCache = new(StringComparer.OrdinalIgnoreCase);
     static readonly string[] SharedHostingDnsRoots =
     [
@@ -51,19 +52,32 @@ public static class KnownBenignActivity
 
             var writeTime = File.GetLastWriteTimeUtc(actual);
             lock (SignatureGate)
-                if (SignatureCache.TryGetValue(actual, out var cached) && cached.WriteTimeUtc == writeTime) return cached.Official;
+                if (SignatureCache.TryGetValue(actual, out var cached) && cached.WriteTimeUtc == writeTime && cached.ExpiresAt > DateTimeOffset.Now) return cached.Official;
 
             var publisher = FileSignatureTrust.TrustedPublisher(actual);
-            var official = publisher is not null &&
-                           (publisher.StartsWith("Microsoft Corporation [", StringComparison.OrdinalIgnoreCase) ||
-                            publisher.StartsWith("Microsoft Windows [", StringComparison.OrdinalIgnoreCase));
+            var official = IsTrustedMicrosoftPublisher(publisher);
             lock (SignatureGate)
             {
-                SignatureCache[actual] = (writeTime, official);
+                SignatureCache[actual] = (writeTime, DateTimeOffset.Now.AddSeconds(official ? 600 : 20), official);
                 if (SignatureCache.Count > 32)
                     foreach (var key in SignatureCache.Keys.Take(SignatureCache.Count - 32).ToList()) SignatureCache.Remove(key);
             }
             return official;
+        }
+        catch { return false; }
+    }
+
+
+    public static bool IsOfficialMicrosoftSysmon(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!Path.GetFileName(actual).Equals("Sysmon64.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(actual)) return false;
+            var normalized = actual.Replace('/', '\\');
+            if (!normalized.Contains("\\engines\\sysmon\\", StringComparison.OrdinalIgnoreCase)) return false;
+            return IsTrustedMicrosoftPublisher(FileSignatureTrust.TrustedPublisher(actual));
         }
         catch { return false; }
     }
@@ -160,18 +174,28 @@ public static class KnownBenignActivity
             !item.Title.Equals("Motor local no confiable", StringComparison.OrdinalIgnoreCase)) return false;
 
         var match = Regex.Match(item.Evidence,
-            @"^El ejecutable del motor no coincide con la copia verificada:\s*(engines\\yara\\(?:yara64|yarac64)\.exe)$",
+            @"^El ejecutable del motor no coincide con la copia verificada:\s*(engines\\(?:(?:yara\\(?:yara64|yarac64)\.exe)|(?:sysmon\\Sysmon64\.exe)))$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success) return false;
-        try
+
+        var relative = match.Groups[1].Value;
+        foreach (var baseDirectory in EngineBaseDirectories())
         {
-            var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, match.Groups[1].Value));
-            var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "engines", "yara")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) return false;
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return EngineTrustStore.Contains(Convert.ToHexString(SHA256.HashData(stream)));
+            try
+            {
+                var path = Path.GetFullPath(Path.Combine(baseDirectory, relative));
+                var root = Path.GetFullPath(baseDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) continue;
+                if (relative.StartsWith("engines\\sysmon\\", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (IsOfficialMicrosoftSysmon(path)) return true;
+                    continue;
+                }
+                if (HashListedInEngineTrustStore(baseDirectory, path)) return true;
+            }
+            catch { }
         }
-        catch { return false; }
+        return false;
     }
 
     public static bool IsExplicitlyTrustedExecutable(string path)
@@ -245,9 +269,42 @@ public static class KnownBenignActivity
     }
 
     static bool IsDotNetPublisher(string? publisher) => publisher is not null &&
-        (publisher.StartsWith(".NET [", StringComparison.OrdinalIgnoreCase) ||
-         publisher.StartsWith("Microsoft Corporation [", StringComparison.OrdinalIgnoreCase) ||
-         publisher.StartsWith("Microsoft Windows [", StringComparison.OrdinalIgnoreCase));
+        (publisher.StartsWith(".NET [", StringComparison.OrdinalIgnoreCase) || IsTrustedMicrosoftPublisher(publisher));
+
+    static bool IsTrustedMicrosoftPublisher(string? publisher)
+    {
+        if (string.IsNullOrWhiteSpace(publisher)) return false;
+        var bracket = publisher.LastIndexOf(" [", StringComparison.Ordinal);
+        var name = (bracket > 0 ? publisher[..bracket] : publisher).Trim();
+        return name.Equals("Microsoft", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("Microsoft ", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static IEnumerable<string> EngineBaseDirectories()
+    {
+        var values = new List<string> { AppContext.BaseDirectory };
+        try
+        {
+            var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "GivenX Shield");
+            if (!string.IsNullOrWhiteSpace(installed)) values.Add(installed);
+        }
+        catch { }
+        return values.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
+    static bool HashListedInEngineTrustStore(string baseDirectory, string path)
+    {
+        try
+        {
+            var store = Path.Combine(baseDirectory, "trusted-engine-hashes.json");
+            if (!File.Exists(store)) return false;
+            var values = JsonSerializer.Deserialize<HashSet<string>>(File.ReadAllText(store)) ?? [];
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var hash = Convert.ToHexString(SHA256.HashData(stream));
+            return values.Contains(hash, StringComparer.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
 
     static bool ContainsCleanResult(string evidence, string engine) => Regex.IsMatch(evidence,
         Regex.Escape(engine) + @":\s*Clean\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);

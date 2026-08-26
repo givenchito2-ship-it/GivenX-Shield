@@ -105,7 +105,12 @@ public sealed class BehaviorMonitor
 
         if (rule is null) return null;
         var evidence = BuildEvidence(rule, image, parent, command, target, destination, query);
-        var fingerprintSource = string.Join('|', rule, image, parent, command, target, destination, query);
+        // A user-path network rule is about the executable itself. Using every destination in
+        // the fingerprint floods the dashboard when one process opens many normal connections.
+        // IOC rules still retain destination/query because those indicators are security relevant.
+        var fingerprintSource = rule.Equals("GX-USERPATH-NETWORK", StringComparison.OrdinalIgnoreCase)
+            ? string.Join('|', rule, image)
+            : string.Join('|', rule, image, parent, command, target, destination, query);
         var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintSource))).Substring(0, 16);
         return new(DateTimeOffset.Now, score >= 85 ? Severity.Alert : Severity.Review, "Comportamiento", FriendlyTitle(rule), evidence, recommendation, score, fingerprint);
     }

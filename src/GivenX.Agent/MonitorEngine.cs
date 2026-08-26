@@ -289,7 +289,8 @@ public sealed class MonitorEngine : IDisposable
         var state = new AgentState(DateTimeOffset.Now, true, risk, status, _observed, alerts, reviews, _intelligenceUpdated, hostCount + hashCount, recent)
         {
             Engines = health, PrimaryAntivirus = primary?.Name ?? "NO DETECTADO", PrimaryAntivirusActive = antivirusActive,
-            CoverageMessage = coverage, CorrelatedIncidents = recent.Count(x => x.Category.Equals("Correlación", StringComparison.OrdinalIgnoreCase))
+            CoverageMessage = coverage, CorrelatedIncidents = recent.Count(x => x.Category.Equals("Correlación", StringComparison.OrdinalIgnoreCase)),
+            AgentVersion = "1.6.2-R9-HF1"
         };
         StateStore.WriteState(state);
     }

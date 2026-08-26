@@ -27,7 +27,9 @@ public sealed class IntegrityMonitor
             if(Directory.Exists(engines))foreach(var path in Directory.EnumerateFiles(engines,"*",SearchOption.AllDirectories).Where(x=>new[]{".exe",".dll"}.Contains(Path.GetExtension(x),StringComparer.OrdinalIgnoreCase)))
             {
                 var finding=Finding(Severity.Alert,"Motor local no confiable",$"El ejecutable del motor no coincide con la copia verificada: {Path.GetRelativePath(AppContext.BaseDirectory,path)}",95);
-                Track(findings,EngineTrustStore.Contains(Hash(path)),finding);
+                var trustedByHash = EngineTrustStore.Contains(Hash(path));
+                var trustedOfficialSysmon = KnownBenignActivity.IsOfficialMicrosoftSysmon(path);
+                Track(findings,trustedByHash || trustedOfficialSysmon,finding);
             }
 
             if(IsInstalled())

@@ -18,7 +18,7 @@ public sealed class DashboardForm : Form
     public DashboardForm(bool startHidden = false)
     {
         _startHidden = startHidden;
-        Text = "GivenX Shield Beta Unificada 1.6.2-R9"; BackColor = Bg; ForeColor = Color.White; Font = new("Segoe UI", 10); MinimumSize = new(1000, 760); Size = new(1180, 820); StartPosition = FormStartPosition.CenterScreen;
+        Text = "GivenX Shield Beta Unificada 1.6.2-R9 HF1"; BackColor = Bg; ForeColor = Color.White; Font = new("Segoe UI", 10); MinimumSize = new(1000, 760); Size = new(1180, 820); StartPosition = FormStartPosition.CenterScreen;
         if (_startHidden) { WindowState = FormWindowState.Minimized; ShowInTaskbar = false; Opacity = 0; }
         BuildUi();
         _tray.Text = "GivenX Shield"; _tray.Icon = SystemIcons.Shield; _tray.Visible = true; _tray.DoubleClick += (_, _) => RestoreWindow();
@@ -66,17 +66,54 @@ public sealed class DashboardForm : Form
 
     void RefreshState()
     {
-        var state = StateStore.ReadState(); var online = state.AgentOnline && state.UpdatedAt > DateTimeOffset.Now.AddSeconds(-12);
-        _status.Text = online ? state.Status : "SIN MONITOR"; _status.ForeColor = !online ? Red : state.Status is "VIGILANDO" or "PROTEGIDO" ? Green : state.Status == "PELIGRO" ? Red : Orange;
-        _risk.Text = $"{state.RiskScore}/100"; _risk.ForeColor = state.RiskScore >= 60 ? Red : state.RiskScore >= 30 ? Orange : Green;
+        var state = StateStore.ReadState();
+        var online = state.AgentOnline && state.UpdatedAt > DateTimeOffset.Now.AddSeconds(-12);
+
+        // R9 HF1 can clean known-benign legacy events even when the resident agent is still
+        // an older installed build. This is especially useful while testing the portable UI.
+        var autoResolvedFingerprints = state.RecentEvents
+            .Where(BuildArtifactTrustStore.IsAutomaticallyResolvedEvent)
+            .Select(x => x.Fingerprint)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (autoResolvedFingerprints.Count > 0) ResolvedEventStore.AddRange(autoResolvedFingerprints);
+
+        var effectiveEvents = state.RecentEvents
+            .Where(x => !autoResolvedFingerprints.Contains(x.Fingerprint))
+            .OrderByDescending(x => x.Time)
+            .ToList();
+        var activeEvents = effectiveEvents.Where(x => x.Time > DateTimeOffset.Now.AddHours(-24)).ToList();
+        var effectiveRisk = activeEvents.Select(x => x.Score).DefaultIfEmpty(0).Max();
+        var effectiveAlerts = activeEvents.Count(x => x.Severity == Severity.Alert);
+        var effectiveReviews = activeEvents.Count(x => x.Severity == Severity.Review);
+        var effectiveStatus = state.Status;
+        if (online)
+        {
+            if (effectiveAlerts > 0) effectiveStatus = "PELIGRO";
+            else if (effectiveReviews > 0) effectiveStatus = "REVISAR";
+            else if (state.Status is "PELIGRO" or "REVISAR") effectiveStatus = state.PrimaryAntivirusActive ? "VIGILANDO" : "VERIFICAR";
+        }
+
+        _status.Text = online ? effectiveStatus : "SIN MONITOR";
+        _status.ForeColor = !online ? Red : effectiveStatus is "VIGILANDO" or "PROTEGIDO" ? Green : effectiveStatus == "PELIGRO" ? Red : Orange;
+        _risk.Text = $"{effectiveRisk}/100";
+        _risk.ForeColor = effectiveRisk >= 60 ? Red : effectiveRisk >= 30 ? Orange : Green;
+
         var feedAge = state.IntelligenceUpdatedAt is null ? "sin inteligencia" : $"{state.IntelligenceIndicators:N0} indicadores";
         var provider = state.PrimaryAntivirus.Length > 24 ? state.PrimaryAntivirus[..24] + "…" : state.PrimaryAntivirus;
-        var blocks=FirewallResponse.Read().Count;_stats.Text = $"{state.ProcessesObserved} procesos · {state.CorrelatedIncidents} correlaciones\nAV: {provider}\n{feedAge} · {blocks} bloqueos"; _stats.ForeColor = Cyan;
-        var riskDriver = state.RecentEvents.OrderByDescending(x => x.Score).ThenByDescending(x => x.Time).FirstOrDefault();
-        _tips.SetToolTip(_status, state.CoverageMessage); _tips.SetToolTip(_stats, state.CoverageMessage);
+        var blocks = FirewallResponse.Read().Count;
+        var agentVersion = string.IsNullOrWhiteSpace(state.AgentVersion) ? "NO REPORTADA" : state.AgentVersion;
+        _stats.Text = $"{state.ProcessesObserved} procesos · {state.CorrelatedIncidents} correlaciones\nAV: {provider}\n{feedAge} · {blocks} bloqueos\nAgente: {agentVersion}";
+        _stats.ForeColor = Cyan;
+
+        var riskDriver = activeEvents.OrderByDescending(x => x.Score).ThenByDescending(x => x.Time).FirstOrDefault();
+        _tips.SetToolTip(_status, state.CoverageMessage);
+        _tips.SetToolTip(_stats, state.CoverageMessage + $"\nVersión del agente residente: {agentVersion}");
         _tips.SetToolTip(_risk, riskDriver is null ? "No hay eventos activos." : $"Puntuación del evento más importante: {riskDriver.Title} ({riskDriver.Score}/100). No representa uso de CPU ni probabilidad de infección.");
-        _events.SuspendLayout(); _events.Controls.Clear();
-        var visibleEvents = state.RecentEvents.Take(30).ToList();
+
+        _events.SuspendLayout();
+        _events.Controls.Clear();
+        var visibleEvents = effectiveEvents.Take(30).ToList();
         if (riskDriver is not null)
         {
             visibleEvents.RemoveAll(x => x.Fingerprint.Equals(riskDriver.Fingerprint, StringComparison.OrdinalIgnoreCase));
@@ -95,7 +132,7 @@ public sealed class DashboardForm : Form
             _events.Controls.Add(card);
         }
         _events.ResumeLayout();
-        NotifyNewThreats(state.RecentEvents);
+        NotifyNewThreats(effectiveEvents);
     }
 
     void NotifyNewThreats(IEnumerable<SecurityEvent> events)
