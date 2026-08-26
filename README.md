@@ -85,3 +85,24 @@ El paquete de código fuente de GitHub no contiene `release-r9` y el instalador 
 Copyright © 2026 GivenX Shield contributors. Proyecto iniciado por Rony (GivenX).
 
 El código se distribuye bajo GNU General Public License v3.0 o posterior. Consulta [LICENSE](LICENSE).
+
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+
+### Team roles
+
+- Committer: givenchito2-ship-it
+- Reviewer: givenchito2-ship-it
+- Approver: givenchito2-ship-it
+
+Only official GivenX Shield releases built from the source code in this repository may be submitted for code signing.
+
+Every release submitted for signing must be built through the project's GitHub Actions workflow and manually approved before signing.
+
+### Privacy
+
+GivenX Shield is designed to operate locally on the user's Windows computer.
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
