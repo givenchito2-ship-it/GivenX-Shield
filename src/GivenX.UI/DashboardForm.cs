@@ -18,7 +18,7 @@ public sealed class DashboardForm : Form
     public DashboardForm(bool startHidden = false)
     {
         _startHidden = startHidden;
-        Text = "GivenX Shield Beta Unificada 1.6.2-R9 HF1"; BackColor = Bg; ForeColor = Color.White; Font = new("Segoe UI", 10); MinimumSize = new(1000, 760); Size = new(1180, 820); StartPosition = FormStartPosition.CenterScreen;
+        Text = "GivenX Shield Beta Unificada 1.6.2-R9 HF2"; BackColor = Bg; ForeColor = Color.White; Font = new("Segoe UI", 10); MinimumSize = new(1000, 760); Size = new(1180, 820); StartPosition = FormStartPosition.CenterScreen;
         if (_startHidden) { WindowState = FormWindowState.Minimized; ShowInTaskbar = false; Opacity = 0; }
         BuildUi();
         _tray.Text = "GivenX Shield"; _tray.Icon = SystemIcons.Shield; _tray.Visible = true; _tray.DoubleClick += (_, _) => RestoreWindow();
@@ -69,7 +69,7 @@ public sealed class DashboardForm : Form
         var state = StateStore.ReadState();
         var online = state.AgentOnline && state.UpdatedAt > DateTimeOffset.Now.AddSeconds(-12);
 
-        // R9 HF1 can clean known-benign legacy events even when the resident agent is still
+        // R9 HF2 can clean known-benign legacy events even when the resident agent is still
         // an older installed build. This is especially useful while testing the portable UI.
         var autoResolvedFingerprints = state.RecentEvents
             .Where(BuildArtifactTrustStore.IsAutomaticallyResolvedEvent)

@@ -16,7 +16,7 @@ public sealed class EventDetailsForm : Form
 
     public EventDetailsForm(SecurityEvent item)
     {
-        _event = item; _filePath = FindExistingFile(item.Evidence); _processId = FindProcessId(item.Evidence); _remoteAddress=FindRemoteAddress(item.Evidence);
+        _event = item; _filePath = FindRelevantFile(item.Evidence); _processId = FindProcessId(item.Evidence); _remoteAddress=FindRemoteAddress(item.Evidence);
         Text = "GivenX Shield | Detalle del evento"; Size = new(980, 760); StartPosition = FormStartPosition.CenterParent; BackColor = Color.FromArgb(7, 12, 20); ForeColor = Color.White; Font = new("Segoe UI", 10);
         var title = new Label { Text = item.Title, Font = new("Segoe UI Semibold", 19), ForeColor = item.Severity == Severity.Alert ? Color.FromArgb(255, 73, 91) : _orange, Left = 24, Top = 22, AutoSize = true };
         var meta = new Label { Text = $"{item.Time.LocalDateTime:yyyy-MM-dd HH:mm:ss}  ·  {item.Category}  ·  puntuación del evento {item.Score}/100", ForeColor = Color.FromArgb(150, 170, 195), Left = 26, Top = 62, AutoSize = true };
@@ -36,6 +36,18 @@ public sealed class EventDetailsForm : Form
     }
 
     Button Button(string text, int width) => new() { Text = text, Width = width, Height = 34, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(25, 39, 58), ForeColor = Color.White, FlatAppearance = { BorderColor = _orange } };
+
+    static string? FindRelevantFile(string evidence)
+    {
+        foreach (var field in new[] { "Biblioteca", "Proceso" })
+        {
+            var match = Regex.Match(evidence, "(?:^|\\r?\\n)" + Regex.Escape(field) + @":\s*([^\r\n]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success) continue;
+            var candidate = match.Groups[1].Value.Trim().Trim('"');
+            if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+        }
+        return FindExistingFile(evidence);
+    }
 
     static string? FindExistingFile(string evidence)
     {

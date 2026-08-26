@@ -48,6 +48,8 @@ public static class BuildArtifactTrustStore
         IsTrustedBuildEvent(item) ||
         KnownBenignActivity.IsCleanCompilerTemporaryEvent(item) ||
         KnownBenignActivity.IsOfficialOneDriveNetworkEvent(item) ||
+        KnownBenignActivity.IsOfficialChromeRegistryEvent(item) ||
+        KnownBenignActivity.IsTrustedLoadedLibraryEvent(item) ||
         KnownBenignActivity.IsTrustedUserPathNetworkEvent(item) ||
         KnownBenignActivity.IsInvalidSharedHostingDnsEvent(item) ||
         KnownBenignActivity.IsVerifiedEngineStagingEvent(item) ||

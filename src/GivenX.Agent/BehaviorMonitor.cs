@@ -59,6 +59,8 @@ public sealed class BehaviorMonitor
         var image = First(Data(text, "Image"), Data(text, "SourceImage"));
         var parent = Data(text, "ParentImage"); var command = Data(text, "CommandLine");
         var target = First(Data(text, "TargetImage"), Data(text, "TargetFilename"), Data(text, "TargetObject"));
+        var imageLoaded = Data(text, "ImageLoaded");
+        var details = Data(text, "Details");
         var destination = Data(text, "DestinationIp"); var query = Data(text, "QueryName").TrimEnd('.');
         string? rule = null; var score = 0; var recommendation = "Revisa el proceso, su firma y su origen antes de actuar.";
 
@@ -86,14 +88,14 @@ public sealed class BehaviorMonitor
         { rule = "GX-REMOTE-THREAD"; score = 90; recommendation = "Posible inyección de código. Desconecta Internet si no reconoces el programa."; }
         else if (id == 6 && ContainsAny(text, ">false<", "Unavailable"))
         { rule = "GX-UNTRUSTED-DRIVER"; score = 90; recommendation = "Se cargó un controlador sin firma verificada. Revisa su editor y origen."; }
-        else if (id == 13 && IsRegistryPersistenceTarget(target))
+        else if (id == 13 && IsRegistryPersistenceTarget(target) && !KnownBenignActivity.IsKnownBenignRegistryPersistence(image, target, details))
         { rule = "GX-REGISTRY-PERSISTENCE"; score = 62; recommendation = "Revisa el valor modificado y el programa que quedaría iniciándose automáticamente."; }
         else if (id == 13 && target.EndsWith("\\MitigationOptions", StringComparison.OrdinalIgnoreCase) && SuspiciousUserPath(image))
         { rule = "GX-EXPLOIT-MITIGATION-TAMPERING"; score = 70; recommendation = "Un programa ejecutado desde una carpeta modificable cambió la protección contra exploits. Comprueba su firma y origen antes de actuar."; }
         else if (id == 11 && target.Contains("\\Start Menu\\Programs\\Startup\\", StringComparison.OrdinalIgnoreCase))
         { rule = "GX-STARTUP-FILE"; score = 68; recommendation = "Se creó un archivo de inicio automático. Comprueba su firma y procedencia."; }
-        else if (id == 7 && SuspiciousUserPath(Data(text, "ImageLoaded")) && ContainsAny(text, ">false<", "Unavailable"))
-        { rule = "GX-UNTRUSTED-DLL"; score = 58; recommendation = "Una aplicación cargó una biblioteca no verificada desde una carpeta modificable."; }
+        else if (id == 7 && SuspiciousUserPath(imageLoaded) && ContainsAny(text, ">false<", "Unavailable") && !KnownBenignActivity.IsExplicitlyTrustedExecutable(imageLoaded))
+        { rule = "GX-UNTRUSTED-DLL"; score = 58; recommendation = "Una aplicación cargó una biblioteca no verificada desde una carpeta modificable. Revisa la ruta de la biblioteca; si verificas ese archivo exacto, puedes permitir su hash."; }
         else if (id == 1 && SuspiciousUserPath(image) && ContainsAny(text, "<Data Name=\"Signed\">false", "<Data Name=\"SignatureStatus\">Unavailable"))
         { rule = "GX-UNSIGNED-USERPATH-PROCESS"; score = 48; }
         else if (id == 3 && IsKnownBad(destination, maliciousHosts))
@@ -104,21 +106,24 @@ public sealed class BehaviorMonitor
         { rule = "GX-IOC-DNS"; score = 100; recommendation = "El equipo consultó un dominio asociado a malware. Desconecta Internet y revisa el proceso."; }
 
         if (rule is null) return null;
-        var evidence = BuildEvidence(rule, image, parent, command, target, destination, query);
+        var evidence = BuildEvidence(rule, image, parent, command, target, imageLoaded, details, destination, query);
         // A user-path network rule is about the executable itself. Using every destination in
         // the fingerprint floods the dashboard when one process opens many normal connections.
         // IOC rules still retain destination/query because those indicators are security relevant.
         var fingerprintSource = rule.Equals("GX-USERPATH-NETWORK", StringComparison.OrdinalIgnoreCase)
             ? string.Join('|', rule, image)
-            : string.Join('|', rule, image, parent, command, target, destination, query);
+            : rule.Equals("GX-UNTRUSTED-DLL", StringComparison.OrdinalIgnoreCase)
+                ? string.Join('|', rule, image, imageLoaded)
+                : string.Join('|', rule, image, parent, command, target, destination, query);
         var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintSource))).Substring(0, 16);
         return new(DateTimeOffset.Now, score >= 85 ? Severity.Alert : Severity.Review, "Comportamiento", FriendlyTitle(rule), evidence, recommendation, score, fingerprint);
     }
 
-    static string BuildEvidence(string rule, string image, string parent, string command, string target, string destination, string query)
+    static string BuildEvidence(string rule, string image, string parent, string command, string target, string imageLoaded, string details, string destination, string query)
     {
         var parts = new List<string> { "Regla: " + rule };
-        Add(parts, "Proceso", image); Add(parts, "Padre", parent); Add(parts, "Comando", Compact(command, 700)); Add(parts, "Objetivo", target); Add(parts, "Destino", destination); Add(parts, "DNS", query);
+        Add(parts, "Proceso", image); Add(parts, "Padre", parent); Add(parts, "Comando", Compact(command, 700)); Add(parts, "Objetivo", target);
+        Add(parts, "Biblioteca", imageLoaded); Add(parts, "Detalles", Compact(details, 500)); Add(parts, "Destino", destination); Add(parts, "DNS", query);
         return string.Join(Environment.NewLine, parts);
     }
 

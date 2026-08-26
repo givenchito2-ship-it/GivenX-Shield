@@ -82,6 +82,52 @@ public static class KnownBenignActivity
         catch { return false; }
     }
 
+
+    public static bool IsKnownBenignRegistryPersistence(string image, string target, string details)
+    {
+        // Do not blanket-allow persistence. Only suppress the ordinary per-user Run key when
+        // the writer is the genuine, signed Chrome executable from Program Files. Critical
+        // persistence locations (Winlogon, Policies, IFEO, SilentProcessExit) are never covered.
+        return IsOrdinaryUserRunKey(target) && IsOfficialGoogleChrome(image);
+    }
+
+    public static bool IsOfficialGoogleChrome(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!Path.GetFileName(actual).Equals("chrome.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(actual)) return false;
+            if (!IsUnderProgramFiles(actual, Path.Combine("Google", "Chrome", "Application"))) return false;
+            var publisher = FileSignatureTrust.TrustedPublisher(actual);
+            return IsTrustedGooglePublisher(publisher);
+        }
+        catch { return false; }
+    }
+
+    public static bool IsOfficialChromeRegistryEvent(SecurityEvent item)
+    {
+        if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
+            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.Equals("Cambio de inicio automático en registro", StringComparison.OrdinalIgnoreCase) ||
+            !item.Evidence.Contains("Regla: GX-REGISTRY-PERSISTENCE", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var process = EvidenceField(item.Evidence, "Proceso");
+        var target = EvidenceField(item.Evidence, "Objetivo");
+        var details = EvidenceField(item.Evidence, "Detalles") ?? string.Empty;
+        return process is not null && target is not null && IsKnownBenignRegistryPersistence(process, target, details);
+    }
+
+    public static bool IsTrustedLoadedLibraryEvent(SecurityEvent item)
+    {
+        if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
+            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.Equals("Biblioteca no verificada cargada", StringComparison.OrdinalIgnoreCase) ||
+            !item.Evidence.Contains("Regla: GX-UNTRUSTED-DLL", StringComparison.OrdinalIgnoreCase)) return false;
+        var library = EvidenceField(item.Evidence, "Biblioteca");
+        return library is not null && IsExplicitlyTrustedExecutable(library);
+    }
+
     public static bool IsCleanCompilerTemporaryEvent(SecurityEvent item)
     {
         if (item.Time < DateTimeOffset.Now.AddDays(-2) ||
@@ -266,6 +312,44 @@ public static class KnownBenignActivity
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
         catch { return false; }
+    }
+
+
+    static bool IsOrdinaryUserRunKey(string target)
+    {
+        if (string.IsNullOrWhiteSpace(target)) return false;
+        var normalized = target.Replace('/', '\\');
+        if (normalized.Contains("\\Policies\\", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("\\Winlogon\\", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("\\Image File Execution Options\\", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("\\SilentProcessExit\\", StringComparison.OrdinalIgnoreCase)) return false;
+        return normalized.Contains("\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool IsUnderProgramFiles(string actual, string relativeRoot)
+    {
+        foreach (var folder in new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 })
+        {
+            try
+            {
+                var basePath = Environment.GetFolderPath(folder);
+                if (string.IsNullOrWhiteSpace(basePath)) continue;
+                var expected = Path.GetFullPath(Path.Combine(basePath, relativeRoot)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (actual.StartsWith(expected, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            catch { }
+        }
+        return false;
+    }
+
+    static bool IsTrustedGooglePublisher(string? publisher)
+    {
+        if (string.IsNullOrWhiteSpace(publisher)) return false;
+        var bracket = publisher.LastIndexOf(" [", StringComparison.Ordinal);
+        var name = (bracket > 0 ? publisher[..bracket] : publisher).Trim();
+        return name.Equals("Google LLC", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("Google Inc", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("Google Inc.", StringComparison.OrdinalIgnoreCase);
     }
 
     static bool IsDotNetPublisher(string? publisher) => publisher is not null &&
