@@ -144,6 +144,20 @@ foreach ($fileName in $installerScripts)
     Copy-Item (Join-Path $root $fileName) $installerPublish -Force
 }
 
+$devTestPublish = Join-Path $publish 'DevTest'
+New-Item -ItemType Directory -Path $devTestPublish -Force | Out-Null
+Copy-Item (Join-Path $root 'install-test-unsigned.ps1') $devTestPublish -Force
+foreach ($fileName in @(
+    'sysmon-config.xml',
+    'RECUPERAR-GIVENX.cmd',
+    'engine-setup.cmd',
+    'REPARAR-ALERTAS-ACTUALES.cmd'
+))
+{
+    Copy-Item (Join-Path $root $fileName) $devTestPublish -Force
+}
+Copy-Item (Join-Path $root 'rules') (Join-Path $devTestPublish 'rules') -Recurse -Force
+
 $agentSignature = $null
 $uiSignature = $null
 $installerSignatures = @()
@@ -204,8 +218,20 @@ $uiSignerThumbprint = $null
 if ($agentSignature) { $agentSignerThumbprint = Normalize-Thumbprint $agentSignature.SignerCertificate.Thumbprint }
 if ($uiSignature) { $uiSignerThumbprint = Normalize-Thumbprint $uiSignature.SignerCertificate.Thumbprint }
 
+$sourceCommit = [string]$env:GITHUB_SHA
+if ([string]::IsNullOrWhiteSpace($sourceCommit))
+{
+    try
+    {
+        $git = Get-Command git -ErrorAction Stop
+        $sourceCommit = (& $git.Source -C $root rev-parse HEAD 2>$null).Trim()
+    }
+    catch { $sourceCommit = '' }
+}
+
 $verification = [pscustomobject]@{
     Version = $version
+    SourceCommit = $sourceCommit
     VerifiedAt = [DateTimeOffset]::Now.ToString('O')
     AgentSha256 = (Get-FileHash $agent -Algorithm SHA256).Hash
     UiSha256 = (Get-FileHash $ui -Algorithm SHA256).Hash
