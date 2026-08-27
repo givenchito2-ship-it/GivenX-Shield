@@ -1,4 +1,4 @@
-﻿#Requires -RunAsAdministrator
+#Requires -RunAsAdministrator
 [CmdletBinding()]
 param()
 
@@ -28,9 +28,13 @@ function Read-JsonSet([string]$Path)
     $values = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     try
     {
-        foreach ($value in @(Get-Content $Path -Raw | ConvertFrom-Json))
+        if (Test-Path $Path)
         {
-            if (-not [string]::IsNullOrWhiteSpace([string]$value)) { [void]$values.Add([string]$value) }
+            $raw = Get-Content $Path -Raw
+            foreach ($match in [regex]::Matches($raw, '(?i)(?<![A-F0-9])[A-F0-9]{64}(?![A-F0-9])'))
+            {
+                [void]$values.Add($match.Value.ToUpperInvariant())
+            }
         }
     }
     catch { }

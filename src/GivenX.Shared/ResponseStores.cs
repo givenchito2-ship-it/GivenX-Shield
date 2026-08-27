@@ -160,11 +160,13 @@ public static class EngineTrustStore
 {
     public static bool Contains(string sha256)
     {
-        if (string.IsNullOrWhiteSpace(sha256) || sha256.Equals("no disponible", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!IsSha256(sha256)) return false;
         try
         {
-            var values = JsonSerializer.Deserialize<HashSet<string>>(File.ReadAllText(AppPaths.TrustedEngines)) ?? [];
-            return values.Contains(sha256, StringComparer.OrdinalIgnoreCase);
+            using var document=JsonDocument.Parse(File.ReadAllText(AppPaths.TrustedEngines));
+            var values=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            CollectHashes(document.RootElement,values);
+            return values.Contains(sha256.Trim());
         }
         catch { return false; }
     }
@@ -178,6 +180,25 @@ public static class EngineTrustStore
             return Contains(Convert.ToHexString(SHA256.HashData(stream)));
         }
         catch { return false; }
+    }
+
+    static void CollectHashes(JsonElement element,HashSet<string> values)
+    {
+        switch(element.ValueKind)
+        {
+            case JsonValueKind.String:
+                var value=element.GetString();if(IsSha256(value))values.Add(value!.Trim());break;
+            case JsonValueKind.Array:
+                foreach(var item in element.EnumerateArray())CollectHashes(item,values);break;
+            case JsonValueKind.Object:
+                foreach(var property in element.EnumerateObject())CollectHashes(property.Value,values);break;
+        }
+    }
+    static bool IsSha256(string? value)
+    {
+        if(string.IsNullOrWhiteSpace(value)||value.Trim().Length!=64)return false;
+        foreach(var c in value.Trim())if(!Uri.IsHexDigit(c))return false;
+        return true;
     }
 }
 

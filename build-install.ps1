@@ -1,4 +1,4 @@
-﻿#Requires -RunAsAdministrator
+#Requires -RunAsAdministrator
 [CmdletBinding()]
 param()
 
@@ -73,7 +73,15 @@ function Repair-OfficialYaraTrust([string]$Path)
     }
     $store = Join-Path $Path 'trusted-engine-hashes.json'
     $trusted = @()
-    try { if (Test-Path $store) { $trusted += @(Get-Content $store -Raw | ConvertFrom-Json) } } catch { }
+    if (Test-Path $store)
+    {
+        try
+        {
+            $raw = Get-Content $store -Raw
+            $trusted += @([regex]::Matches($raw, '(?i)(?<![A-F0-9])[A-F0-9]{64}(?![A-F0-9])') | ForEach-Object { $_.Value.ToUpperInvariant() })
+        }
+        catch { }
+    }
     $added = 0
     foreach ($name in $expected.Keys)
     {
@@ -89,12 +97,9 @@ function Repair-OfficialYaraTrust([string]$Path)
             Write-Warning "$name no coincide con YARA 4.5.5 oficial y no se marcara como confiable."
         }
     }
-    if ($added -gt 0 -or -not (Test-Path $store))
-    {
-        $trusted = @($trusted | Where-Object { $_ -match '^[A-Fa-f0-9]{64}$' } | Sort-Object -Unique)
-        ConvertTo-Json -InputObject $trusted | Set-Content $store -Encoding UTF8
-        Write-Host "$added hash(es) oficiales de YARA fueron reconciliados en la candidata." -ForegroundColor Green
-    }
+    $trusted = @($trusted | Where-Object { $_ -match '^[A-Fa-f0-9]{64}$' } | ForEach-Object { $_.ToUpperInvariant() } | Sort-Object -Unique)
+    ConvertTo-Json -InputObject $trusted | Set-Content $store -Encoding UTF8
+    Write-Host "$added hash(es) oficiales de YARA fueron agregados; el almacen de confianza fue normalizado." -ForegroundColor Green
 }
 
 function Get-AppControlFileName($EventRecord)
