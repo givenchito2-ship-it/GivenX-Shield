@@ -21,7 +21,9 @@ public static class KnownBenignActivity
         "FileCoAuth.exe",
         "OneDrive.Sync.Service.exe",
         "Microsoft.SharePoint.exe",
-        "OneDriveSetup.exe"
+        "OneDriveSetup.exe",
+        "OneDriveLauncher.exe",
+        "OneDriveStandaloneUpdater.exe"
     };
 
     public static bool IsOfficialMicrosoftOneDrive(string path)
@@ -105,9 +107,10 @@ public static class KnownBenignActivity
 
     public static bool IsKnownBenignRegistryPersistence(string image, string target, string details)
     {
-        // Do not blanket-allow persistence. Only suppress ordinary per-user Run entries from
-        // explicitly verified vendor binaries. Critical locations such as Winlogon, Policies,
-        // IFEO and SilentProcessExit are never covered by this helper.
+        // Do not blanket-allow persistence. Only suppress narrowly verified vendor maintenance
+        // patterns. Critical locations such as Winlogon, Policies, IFEO and SilentProcessExit are
+        // never covered by this helper.
+        if (IsOfficialMicrosoftEdgeCleanup(image, target, details)) return true;
         if (!IsOrdinaryUserRunKey(target)) return false;
         if (IsOfficialGoogleChrome(image)) return true;
         if (IsOfficialMicrosoftEdge(image) &&
@@ -142,6 +145,36 @@ public static class KnownBenignActivity
             if (!Path.GetFileName(actual).Equals("msedge.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(actual)) return false;
             if (!IsUnderProgramFiles(actual, Path.Combine("Microsoft", "Edge", "Application"))) return false;
             return IsTrustedMicrosoftPublisher(FileSignatureTrust.TrustedPublisher(actual));
+        }
+        catch { return false; }
+    }
+
+    public static bool IsOfficialMicrosoftEdgeCleanup(string path, string target, string details)
+    {
+        if (!IsExpectedMicrosoftEdgeSetupPath(path) || !IsEdgeCleanupRunOnceTarget(target) ||
+            !HasEdgeCleanupArguments(details)) return false;
+        try
+        {
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            return File.Exists(actual) && IsTrustedMicrosoftPublisher(FileSignatureTrust.TrustedPublisher(actual));
+        }
+        catch { return false; }
+    }
+
+    public static bool IsOfficialDiscord(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!Path.GetFileName(actual).Equals("Discord.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(actual)) return false;
+            var root = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Discord")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!actual.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return false;
+            var relative = actual[root.Length..].Replace('/', '\\');
+            if (!Regex.IsMatch(relative, @"^app-[^\\]+\\Discord\.exe$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return false;
+            return IsTrustedDiscordPublisher(FileSignatureTrust.TrustedPublisher(actual));
         }
         catch { return false; }
     }
@@ -262,6 +295,61 @@ public static class KnownBenignActivity
         return IsOfficialMicrosoftOneDrive(currentOneDrive);
     }
 
+
+    public static bool IsOfficialEdgeCleanupRegistryEvent(SecurityEvent item)
+    {
+        if (item.Time < DateTimeOffset.Now.AddDays(-14) ||
+            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.Equals("Cambio de inicio automático en registro", StringComparison.OrdinalIgnoreCase) ||
+            !item.Evidence.Contains("Regla: GX-REGISTRY-PERSISTENCE", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var process = EvidenceField(item.Evidence, "Proceso");
+        var target = EvidenceField(item.Evidence, "Objetivo");
+        var details = EvidenceField(item.Evidence, "Detalles") ?? string.Empty;
+        if (process is null || target is null || !IsExpectedMicrosoftEdgeSetupPath(process) ||
+            !IsEdgeCleanupRunOnceTarget(target) || !HasEdgeCleanupArguments(details)) return false;
+
+        if (File.Exists(process)) return IsOfficialMicrosoftEdgeCleanup(process, target, details);
+
+        // The old version-specific installer can disappear after Edge finishes cleanup. In that
+        // case keep the event benign only while the currently installed Edge is still Microsoft-signed.
+        foreach (var folder in new[] { Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolder.ProgramFiles })
+        {
+            try
+            {
+                var application = Path.Combine(Environment.GetFolderPath(folder), "Microsoft", "Edge", "Application");
+                if (!Directory.Exists(application)) continue;
+                foreach (var edge in Directory.EnumerateFiles(application, "msedge.exe", SearchOption.TopDirectoryOnly))
+                    if (IsOfficialMicrosoftEdge(edge)) return true;
+            }
+            catch { }
+        }
+        return false;
+    }
+
+    public static bool IsOfficialDiscordNetworkEvent(SecurityEvent item)
+    {
+        if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
+            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.Equals("Conexión desde programa de carpeta sensible", StringComparison.OrdinalIgnoreCase) ||
+            !item.Evidence.Contains("Regla: GX-USERPATH-NETWORK", StringComparison.OrdinalIgnoreCase)) return false;
+        var process = EvidenceField(item.Evidence, "Proceso");
+        return process is not null && IsOfficialDiscord(process);
+    }
+
+    public static bool IsCleanTransientInstallerFileEvent(SecurityEvent item)
+    {
+        if (item.Time > DateTimeOffset.Now.AddMinutes(-10) || item.Time < DateTimeOffset.Now.AddDays(-2) ||
+            !item.Category.Equals("Archivo", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.StartsWith("Archivo nuevo", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var path = FirstEvidenceLine(item.Evidence);
+        if (path is null || !IsTransientInstallerTempPath(path) || File.Exists(path)) return false;
+        if (!ContainsCleanResult(item.Evidence, "Microsoft Defender") || !HasCleanVirusTotalResult(item.Evidence)) return false;
+        if (Regex.IsMatch(item.Evidence, @"(?:Microsoft Defender|YARA|VirusTotal):\s*(?:Malicious|Suspicious)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return false;
+        return true;
+    }
 
     public static bool IsOfficialGitHubDesktopNetworkEvent(SecurityEvent item)
     {
@@ -521,6 +609,60 @@ public static class KnownBenignActivity
         catch { return false; }
     }
 
+    static bool IsExpectedMicrosoftEdgeSetupPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!Path.GetFileName(actual).Equals("setup.exe", StringComparison.OrdinalIgnoreCase)) return false;
+            foreach (var folder in new[] { Environment.SpecialFolder.ProgramFilesX86, Environment.SpecialFolder.ProgramFiles })
+            {
+                var basePath = Environment.GetFolderPath(folder);
+                if (string.IsNullOrWhiteSpace(basePath)) continue;
+                var root = Path.GetFullPath(Path.Combine(basePath, "Microsoft", "Edge", "Application")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (!actual.StartsWith(root, StringComparison.OrdinalIgnoreCase)) continue;
+                var relative = actual[root.Length..].Replace('/', '\\');
+                if (Regex.IsMatch(relative, @"^[0-9]+(?:\.[0-9]+){2,3}\\Installer\\setup\.exe$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return true;
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    static bool IsEdgeCleanupRunOnceTarget(string target)
+    {
+        if (string.IsNullOrWhiteSpace(target)) return false;
+        return Regex.IsMatch(target.Replace('/', '\\'),
+            @"^HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce\\msedge_cleanup_\{[0-9A-Fa-f-]{36}\}$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    static bool HasEdgeCleanupArguments(string details)
+    {
+        if (string.IsNullOrWhiteSpace(details)) return false;
+        return details.Contains("--msedge", StringComparison.OrdinalIgnoreCase) &&
+               details.Contains("--channel=stable", StringComparison.OrdinalIgnoreCase) &&
+               details.Contains("--delete-old-versions", StringComparison.OrdinalIgnoreCase) &&
+               details.Contains("--system-level", StringComparison.OrdinalIgnoreCase) &&
+               details.Contains("--on-logon", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool IsTransientInstallerTempPath(string path)
+    {
+        try
+        {
+            var temp = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!actual.StartsWith(temp, StringComparison.OrdinalIgnoreCase)) return false;
+            var relative = actual[temp.Length..].Replace('/', '\\');
+            return Regex.IsMatch(relative,
+                @"^(?:~nsu[^\\]+\\|_iu[^\\]+\\|is-[^\\]+\\|[^\\]+\\_?isetup\\)[^\\]+$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+        catch { return false; }
+    }
+
     static bool IsUnderProgramFiles(string actual, string relativeRoot)
     {
         foreach (var folder in new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 })
@@ -565,6 +707,17 @@ public static class KnownBenignActivity
         return name.Equals("Johannes Schindelin", StringComparison.OrdinalIgnoreCase);
     }
 
+    static bool IsTrustedDiscordPublisher(string? publisher)
+    {
+        if (string.IsNullOrWhiteSpace(publisher)) return false;
+        var bracket = publisher.LastIndexOf(" [", StringComparison.Ordinal);
+        var name = (bracket > 0 ? publisher[..bracket] : publisher).Trim();
+        return name.Equals("Discord Inc.", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("Discord Inc", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("Discord Netherlands B.V.", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("Discord Netherlands BV", StringComparison.OrdinalIgnoreCase);
+    }
+
     static bool IsDotNetPublisher(string? publisher) => publisher is not null &&
         (publisher.StartsWith(".NET [", StringComparison.OrdinalIgnoreCase) || IsTrustedMicrosoftPublisher(publisher));
 
@@ -607,8 +760,11 @@ public static class KnownBenignActivity
         Regex.Escape(engine) + @":\s*Clean\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     static bool HasAcceptableVirusTotalResult(string evidence) =>
-        Regex.IsMatch(evidence, @"VirusTotal:\s*Clean\s*\(0\s+detecciones", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+        HasCleanVirusTotalResult(evidence) ||
         Regex.IsMatch(evidence, @"VirusTotal:\s*Unknown\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    static bool HasCleanVirusTotalResult(string evidence) =>
+        Regex.IsMatch(evidence, @"VirusTotal:\s*Clean\s*\(0\s+detecciones", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     static string? FirstEvidenceLine(string evidence) => evidence
         .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
