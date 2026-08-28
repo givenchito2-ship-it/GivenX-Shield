@@ -85,10 +85,14 @@ public static class KnownBenignActivity
 
     public static bool IsKnownBenignRegistryPersistence(string image, string target, string details)
     {
-        // Do not blanket-allow persistence. Only suppress the ordinary per-user Run key when
-        // the writer is the genuine, signed Chrome executable from Program Files. Critical
-        // persistence locations (Winlogon, Policies, IFEO, SilentProcessExit) are never covered.
-        return IsOrdinaryUserRunKey(target) && IsOfficialGoogleChrome(image);
+        // Do not blanket-allow persistence. Only suppress ordinary per-user Run entries from
+        // explicitly verified vendor binaries. Critical locations such as Winlogon, Policies,
+        // IFEO and SilentProcessExit are never covered by this helper.
+        if (!IsOrdinaryUserRunKey(target)) return false;
+        if (IsOfficialGoogleChrome(image)) return true;
+        return IsOfficialMicrosoftEdge(image) &&
+               target.Contains("\\MicrosoftEdgeAutoLaunch_", StringComparison.OrdinalIgnoreCase) &&
+               details.Contains("--win-session-start", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsOfficialGoogleChrome(string path)
@@ -105,6 +109,37 @@ public static class KnownBenignActivity
         catch { return false; }
     }
 
+    public static bool IsOfficialMicrosoftEdge(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!Path.GetFileName(actual).Equals("msedge.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(actual)) return false;
+            if (!IsUnderProgramFiles(actual, Path.Combine("Microsoft", "Edge", "Application"))) return false;
+            return IsTrustedMicrosoftPublisher(FileSignatureTrust.TrustedPublisher(actual));
+        }
+        catch { return false; }
+    }
+
+    public static bool IsOfficialGitHubDesktop(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!Path.GetFileName(actual).Equals("GitHubDesktop.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(actual)) return false;
+            var root = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "GitHubDesktop")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!actual.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return false;
+            var relative = actual[root.Length..].Replace('/', '\\');
+            if (!Regex.IsMatch(relative, @"^app-[^\\]+\\GitHubDesktop\.exe$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return false;
+            return IsTrustedGitHubPublisher(FileSignatureTrust.TrustedPublisher(actual));
+        }
+        catch { return false; }
+    }
+
     public static bool IsOfficialChromeRegistryEvent(SecurityEvent item)
     {
         if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
@@ -115,7 +150,31 @@ public static class KnownBenignActivity
         var process = EvidenceField(item.Evidence, "Proceso");
         var target = EvidenceField(item.Evidence, "Objetivo");
         var details = EvidenceField(item.Evidence, "Detalles") ?? string.Empty;
-        return process is not null && target is not null && IsKnownBenignRegistryPersistence(process, target, details);
+        return process is not null && target is not null && IsOfficialGoogleChrome(process) &&
+               IsKnownBenignRegistryPersistence(process, target, details);
+    }
+
+    public static bool IsOfficialEdgeRegistryEvent(SecurityEvent item)
+    {
+        if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
+            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.Equals("Cambio de inicio automático en registro", StringComparison.OrdinalIgnoreCase) ||
+            !item.Evidence.Contains("Regla: GX-REGISTRY-PERSISTENCE", StringComparison.OrdinalIgnoreCase)) return false;
+        var process = EvidenceField(item.Evidence, "Proceso");
+        var target = EvidenceField(item.Evidence, "Objetivo");
+        var details = EvidenceField(item.Evidence, "Detalles") ?? string.Empty;
+        return process is not null && target is not null && IsOfficialMicrosoftEdge(process) &&
+               IsKnownBenignRegistryPersistence(process, target, details);
+    }
+
+    public static bool IsOfficialGitHubDesktopNetworkEvent(SecurityEvent item)
+    {
+        if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
+            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.Equals("Conexión desde programa de carpeta sensible", StringComparison.OrdinalIgnoreCase) ||
+            !item.Evidence.Contains("Regla: GX-USERPATH-NETWORK", StringComparison.OrdinalIgnoreCase)) return false;
+        var process = EvidenceField(item.Evidence, "Proceso");
+        return process is not null && IsOfficialGitHubDesktop(process);
     }
 
     public static bool IsTrustedLoadedLibraryEvent(SecurityEvent item)
@@ -350,6 +409,16 @@ public static class KnownBenignActivity
         return name.Equals("Google LLC", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("Google Inc", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("Google Inc.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool IsTrustedGitHubPublisher(string? publisher)
+    {
+        if (string.IsNullOrWhiteSpace(publisher)) return false;
+        var bracket = publisher.LastIndexOf(" [", StringComparison.Ordinal);
+        var name = (bracket > 0 ? publisher[..bracket] : publisher).Trim();
+        return name.Equals("GitHub, Inc.", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("GitHub, Inc", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("GitHub", StringComparison.OrdinalIgnoreCase);
     }
 
     static bool IsDotNetPublisher(string? publisher) => publisher is not null &&

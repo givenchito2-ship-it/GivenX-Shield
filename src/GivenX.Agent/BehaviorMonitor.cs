@@ -100,7 +100,10 @@ public sealed class BehaviorMonitor
         { rule = "GX-UNSIGNED-USERPATH-PROCESS"; score = 48; }
         else if (id == 3 && IsKnownBad(destination, maliciousHosts))
         { rule = "GX-IOC-NETWORK"; score = 100; recommendation = "El proceso contactó infraestructura asociada a malware. Desconecta Internet y aísla el ejecutable."; }
-        else if (id == 3 && SuspiciousUserPath(image) && !KnownBenignActivity.IsOfficialMicrosoftOneDriveComponent(image) && !KnownBenignActivity.IsExplicitlyTrustedExecutable(image))
+        else if (id == 3 && SuspiciousUserPath(image) &&
+                 !KnownBenignActivity.IsOfficialMicrosoftOneDriveComponent(image) &&
+                 !KnownBenignActivity.IsOfficialGitHubDesktop(image) &&
+                 !KnownBenignActivity.IsExplicitlyTrustedExecutable(image))
         { rule = "GX-USERPATH-NETWORK"; score = 42; recommendation = "Un programa ejecutado desde una carpeta modificable inició una conexión externa."; }
         else if (id == 22 && !KnownBenignActivity.IsSharedHostingDomain(query) && IsKnownBad(query, maliciousHosts))
         { rule = "GX-IOC-DNS"; score = 100; recommendation = "El equipo consultó un dominio asociado a malware. Desconecta Internet y revisa el proceso."; }

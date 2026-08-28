@@ -49,6 +49,8 @@ public static class BuildArtifactTrustStore
         KnownBenignActivity.IsCleanCompilerTemporaryEvent(item) ||
         KnownBenignActivity.IsOfficialOneDriveNetworkEvent(item) ||
         KnownBenignActivity.IsOfficialChromeRegistryEvent(item) ||
+        KnownBenignActivity.IsOfficialEdgeRegistryEvent(item) ||
+        KnownBenignActivity.IsOfficialGitHubDesktopNetworkEvent(item) ||
         KnownBenignActivity.IsTrustedLoadedLibraryEvent(item) ||
         KnownBenignActivity.IsTrustedUserPathNetworkEvent(item) ||
         KnownBenignActivity.IsInvalidSharedHostingDnsEvent(item) ||
