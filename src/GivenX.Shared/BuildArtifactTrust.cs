@@ -23,7 +23,8 @@ public static class BuildArtifactTrustStore
         "build-install.ps1", "engine-setup.cmd", "engine-setup.ps1", "rollback.ps1",
         "uninstall.ps1", "verify-build.ps1", "REPARAR-ALERTAS-ACTUALES.cmd",
         "repair-current-alerts.ps1", "CONFIGURAR-FIRMA.cmd", "configure-signing.ps1",
-        "prepare-signing-input.ps1", "prepare-signed-release.ps1", "package-signed-release.ps1"
+        "prepare-signing-input.ps1", "prepare-signed-release.ps1", "package-signed-release.ps1",
+        "install-test-unsigned.ps1"
     };
 
     public static bool Contains(string sha256)

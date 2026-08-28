@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [switch]$RequireSignature
 )
@@ -195,7 +195,8 @@ $knownPackageScripts = @(
     'verify-build.ps1',
     'prepare-signing-input.ps1',
     'prepare-signed-release.ps1',
-    'package-signed-release.ps1'
+    'package-signed-release.ps1',
+    'install-test-unsigned.ps1'
 )
 $artifactRows = Get-ChildItem $root -File -Recurse |
     Where-Object {

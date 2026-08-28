@@ -18,7 +18,7 @@ public sealed class DashboardForm : Form
     public DashboardForm(bool startHidden = false)
     {
         _startHidden = startHidden;
-        Text = "GivenX Shield Beta Unificada 1.6.2-R9 HF4"; BackColor = Bg; ForeColor = Color.White; Font = new("Segoe UI", 10); MinimumSize = new(1000, 760); Size = new(1180, 820); StartPosition = FormStartPosition.CenterScreen;
+        Text = "GivenX Shield Beta Unificada 1.6.2-R9 HF5"; BackColor = Bg; ForeColor = Color.White; Font = new("Segoe UI", 10); MinimumSize = new(1000, 760); Size = new(1180, 820); StartPosition = FormStartPosition.CenterScreen;
         if (_startHidden) { WindowState = FormWindowState.Minimized; ShowInTaskbar = false; Opacity = 0; }
         BuildUi();
         _tray.Text = "GivenX Shield"; _tray.Icon = SystemIcons.Shield; _tray.Visible = true; _tray.DoubleClick += (_, _) => RestoreWindow();
