@@ -116,7 +116,7 @@ public static class KnownBenignActivity
         return IsOfficialMicrosoftOneDriveSetup(image) &&
                ((target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) ||
                  details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase)) ||
-                IsOneDriveStandaloneUpdateCleanupTarget(target));
+                IsOneDriveCachedUpdateCleanupTarget(target));
     }
 
     public static bool IsOfficialGoogleChrome(string path)
