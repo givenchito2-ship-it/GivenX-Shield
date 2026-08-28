@@ -114,8 +114,9 @@ public static class KnownBenignActivity
             target.Contains("\\MicrosoftEdgeAutoLaunch_", StringComparison.OrdinalIgnoreCase) &&
             details.Contains("--win-session-start", StringComparison.OrdinalIgnoreCase)) return true;
         return IsOfficialMicrosoftOneDriveSetup(image) &&
-               (target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) ||
-                details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase));
+               ((target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) ||
+                 details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase)) ||
+                IsOneDriveStandaloneUpdateCleanupTarget(target));
     }
 
     public static bool IsOfficialGoogleChrome(string path)
@@ -220,8 +221,7 @@ public static class KnownBenignActivity
 
     public static bool IsOfficialOneDriveRegistryEvent(SecurityEvent item)
     {
-        if (item.Time < DateTimeOffset.Now.AddDays(-2) ||
-            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+        if (!item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
             !item.Title.Equals("Cambio de inicio automático en registro", StringComparison.OrdinalIgnoreCase) ||
             !item.Evidence.Contains("Regla: GX-REGISTRY-PERSISTENCE", StringComparison.OrdinalIgnoreCase)) return false;
 
@@ -230,14 +230,30 @@ public static class KnownBenignActivity
         var details = EvidenceField(item.Evidence, "Detalles") ?? string.Empty;
         if (process is null || target is null || !IsOrdinaryUserRunKey(target)) return false;
 
-        if (IsOfficialMicrosoftOneDriveSetup(process) &&
-            (target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) || details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase))) return true;
+        var oneDriveRelated = target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) ||
+                              details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase);
+        var standaloneCleanup = IsOneDriveStandaloneUpdateCleanupTarget(target);
+
+        // Fresh events still require the updater itself to exist and be Microsoft-signed.
+        if (item.Time >= DateTimeOffset.Now.AddDays(-2) &&
+            IsOfficialMicrosoftOneDriveSetup(process) &&
+            (oneDriveRelated || standaloneCleanup)) return true;
 
         // OneDriveSetup.exe is transient and may already be deleted when the dashboard re-evaluates
-        // the event. For cleanup only, accept the exact updater location when the current OneDrive
-        // installation is still Microsoft-signed and the Run entry is clearly OneDrive-related.
-        if (!IsExpectedOneDriveSetupPath(process) ||
-            !(target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) || details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase))) return false;
+        // the event. For historical cleanup, accept only the exact official updater path and either
+        // an explicitly OneDrive-related Run entry (short window) or Microsoft's exact RunOnce
+        // cleanup value "Delete Cached Standalone Update Binary" (longer window). The currently
+        // installed OneDrive.exe must still be Microsoft-signed.
+        if (!IsExpectedOneDriveSetupPath(process)) return false;
+        if (oneDriveRelated)
+        {
+            if (item.Time < DateTimeOffset.Now.AddDays(-2)) return false;
+        }
+        else if (standaloneCleanup)
+        {
+            if (item.Time < DateTimeOffset.Now.AddDays(-14)) return false;
+        }
+        else return false;
 
         var currentOneDrive = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -463,6 +479,15 @@ public static class KnownBenignActivity
             normalized.Contains("\\Image File Execution Options\\", StringComparison.OrdinalIgnoreCase) ||
             normalized.Contains("\\SilentProcessExit\\", StringComparison.OrdinalIgnoreCase)) return false;
         return normalized.Contains("\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", StringComparison.OrdinalIgnoreCase);
+    }
+
+
+    static bool IsOneDriveStandaloneUpdateCleanupTarget(string target)
+    {
+        if (string.IsNullOrWhiteSpace(target)) return false;
+        var normalized = target.Replace('/', '\\').TrimEnd('\\');
+        const string suffix = @"\Software\Microsoft\Windows\CurrentVersion\RunOnce\Delete Cached Standalone Update Binary";
+        return normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
     }
 
     static bool IsExpectedOneDriveSetupPath(string path)
