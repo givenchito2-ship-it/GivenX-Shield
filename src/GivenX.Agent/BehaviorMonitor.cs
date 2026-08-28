@@ -94,7 +94,7 @@ public sealed class BehaviorMonitor
         { rule = "GX-EXPLOIT-MITIGATION-TAMPERING"; score = 70; recommendation = "Un programa ejecutado desde una carpeta modificable cambió la protección contra exploits. Comprueba su firma y origen antes de actuar."; }
         else if (id == 11 && target.Contains("\\Start Menu\\Programs\\Startup\\", StringComparison.OrdinalIgnoreCase))
         { rule = "GX-STARTUP-FILE"; score = 68; recommendation = "Se creó un archivo de inicio automático. Comprueba su firma y procedencia."; }
-        else if (id == 7 && SuspiciousUserPath(imageLoaded) && ContainsAny(text, ">false<", "Unavailable") && !KnownBenignActivity.IsExplicitlyTrustedExecutable(imageLoaded))
+        else if (id == 7 && SuspiciousUserPath(imageLoaded) && !SamePath(image, imageLoaded) && ContainsAny(text, ">false<", "Unavailable") && !KnownBenignActivity.IsExplicitlyTrustedExecutable(imageLoaded))
         { rule = "GX-UNTRUSTED-DLL"; score = 58; recommendation = "Una aplicación cargó una biblioteca no verificada desde una carpeta modificable. Revisa la ruta de la biblioteca; si verificas ese archivo exacto, puedes permitir su hash."; }
         else if (id == 1 && SuspiciousUserPath(image) && ContainsAny(text, "<Data Name=\"Signed\">false", "<Data Name=\"SignatureStatus\">Unavailable"))
         { rule = "GX-UNSIGNED-USERPATH-PROCESS"; score = 48; }
@@ -180,6 +180,18 @@ public sealed class BehaviorMonitor
         candidate = candidate.Trim().TrimEnd('.');
         return indicators.Any(value => !string.IsNullOrWhiteSpace(value) &&
             candidate.Equals(value.Trim().TrimEnd('.'), StringComparison.OrdinalIgnoreCase));
+    }
+    static bool SamePath(string left, string right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right)) return false;
+        try
+        {
+            return Path.GetFullPath(left).TrimEnd('\\').Equals(Path.GetFullPath(right).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return left.Trim().TrimEnd('\\').Equals(right.Trim().TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+        }
     }
     static bool SuspiciousUserPath(string path) => ContainsAny(path, "\\AppData\\", "\\Temp\\", "\\Downloads\\", "\\Users\\Public\\");
     static bool EndsWithAny(string source,params string[] values)=>values.Any(x=>source.EndsWith(x,StringComparison.OrdinalIgnoreCase));

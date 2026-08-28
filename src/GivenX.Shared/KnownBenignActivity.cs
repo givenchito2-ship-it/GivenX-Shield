@@ -274,6 +274,18 @@ public static class KnownBenignActivity
                (IsOfficialGitHubDesktop(process) || IsOfficialGitHubDesktopBundledGit(process));
     }
 
+    public static bool IsSelfImageLoadedLibraryEvent(SecurityEvent item)
+    {
+        if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
+            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.Equals("Biblioteca no verificada cargada", StringComparison.OrdinalIgnoreCase) ||
+            !item.Evidence.Contains("Regla: GX-UNTRUSTED-DLL", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var process = EvidenceField(item.Evidence, "Proceso");
+        var library = EvidenceField(item.Evidence, "Biblioteca");
+        return SamePath(process, library);
+    }
+
     public static bool IsTrustedLoadedLibraryEvent(SecurityEvent item)
     {
         if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
@@ -601,6 +613,19 @@ public static class KnownBenignActivity
     static string? FirstEvidenceLine(string evidence) => evidence
         .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
         .FirstOrDefault()?.Trim().Trim('"');
+
+    static bool SamePath(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right)) return false;
+        try
+        {
+            return Path.GetFullPath(left).TrimEnd('\\').Equals(Path.GetFullPath(right).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return left.Trim().TrimEnd('\\').Equals(right.Trim().TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     static string? EvidenceField(string evidence, string field)
     {

@@ -53,6 +53,7 @@ public static class BuildArtifactTrustStore
         KnownBenignActivity.IsOfficialEdgeRegistryEvent(item) ||
         KnownBenignActivity.IsOfficialOneDriveRegistryEvent(item) ||
         KnownBenignActivity.IsOfficialGitHubDesktopNetworkEvent(item) ||
+        KnownBenignActivity.IsSelfImageLoadedLibraryEvent(item) ||
         KnownBenignActivity.IsTrustedLoadedLibraryEvent(item) ||
         KnownBenignActivity.IsTrustedUserPathNetworkEvent(item) ||
         KnownBenignActivity.IsInvalidSharedHostingDnsEvent(item) ||
