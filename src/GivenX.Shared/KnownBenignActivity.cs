@@ -232,24 +232,25 @@ public static class KnownBenignActivity
 
         var oneDriveRelated = target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) ||
                               details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase);
-        var standaloneCleanup = IsOneDriveStandaloneUpdateCleanupTarget(target);
+        var cachedUpdateCleanup = IsOneDriveCachedUpdateCleanupTarget(target);
 
         // Fresh events still require the updater itself to exist and be Microsoft-signed.
         if (item.Time >= DateTimeOffset.Now.AddDays(-2) &&
             IsOfficialMicrosoftOneDriveSetup(process) &&
-            (oneDriveRelated || standaloneCleanup)) return true;
+            (oneDriveRelated || cachedUpdateCleanup)) return true;
 
         // OneDriveSetup.exe is transient and may already be deleted when the dashboard re-evaluates
         // the event. For historical cleanup, accept only the exact official updater path and either
         // an explicitly OneDrive-related Run entry (short window) or Microsoft's exact RunOnce
-        // cleanup value "Delete Cached Standalone Update Binary" (longer window). The currently
+        // cleanup values "Delete Cached Standalone Update Binary" / "Delete Cached Update Binary"
+        // (longer window). The currently
         // installed OneDrive.exe must still be Microsoft-signed.
         if (!IsExpectedOneDriveSetupPath(process)) return false;
         if (oneDriveRelated)
         {
             if (item.Time < DateTimeOffset.Now.AddDays(-2)) return false;
         }
-        else if (standaloneCleanup)
+        else if (cachedUpdateCleanup)
         {
             if (item.Time < DateTimeOffset.Now.AddDays(-14)) return false;
         }
@@ -482,12 +483,16 @@ public static class KnownBenignActivity
     }
 
 
-    static bool IsOneDriveStandaloneUpdateCleanupTarget(string target)
+    static bool IsOneDriveCachedUpdateCleanupTarget(string target)
     {
         if (string.IsNullOrWhiteSpace(target)) return false;
         var normalized = target.Replace('/', '\\').TrimEnd('\\');
-        const string suffix = @"\Software\Microsoft\Windows\CurrentVersion\RunOnce\Delete Cached Standalone Update Binary";
-        return normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+        var suffixes = new[]
+        {
+            @"\Software\Microsoft\Windows\CurrentVersion\RunOnce\Delete Cached Standalone Update Binary",
+            @"\Software\Microsoft\Windows\CurrentVersion\RunOnce\Delete Cached Update Binary"
+        };
+        return suffixes.Any(suffix => normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
     }
 
     static bool IsExpectedOneDriveSetupPath(string path)

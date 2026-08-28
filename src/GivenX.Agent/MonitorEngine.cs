@@ -290,7 +290,7 @@ public sealed class MonitorEngine : IDisposable
         {
             Engines = health, PrimaryAntivirus = primary?.Name ?? "NO DETECTADO", PrimaryAntivirusActive = antivirusActive,
             CoverageMessage = coverage, CorrelatedIncidents = recent.Count(x => x.Category.Equals("Correlación", StringComparison.OrdinalIgnoreCase)),
-            AgentVersion = "1.6.2-R9-HF7"
+            AgentVersion = "1.6.2-R9-HF8"
         };
         StateStore.WriteState(state);
     }
