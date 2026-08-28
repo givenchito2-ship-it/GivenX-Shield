@@ -103,6 +103,7 @@ public sealed class BehaviorMonitor
         else if (id == 3 && SuspiciousUserPath(image) &&
                  !KnownBenignActivity.IsOfficialMicrosoftOneDriveComponent(image) &&
                  !KnownBenignActivity.IsOfficialGitHubDesktop(image) &&
+                 !KnownBenignActivity.IsOfficialGitHubDesktopBundledGit(image) &&
                  !KnownBenignActivity.IsExplicitlyTrustedExecutable(image))
         { rule = "GX-USERPATH-NETWORK"; score = 42; recommendation = "Un programa ejecutado desde una carpeta modificable inició una conexión externa."; }
         else if (id == 22 && !KnownBenignActivity.IsSharedHostingDomain(query) && IsKnownBad(query, maliciousHosts))

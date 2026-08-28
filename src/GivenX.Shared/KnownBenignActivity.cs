@@ -20,7 +20,8 @@ public static class KnownBenignActivity
         "OneDrive.exe",
         "FileCoAuth.exe",
         "OneDrive.Sync.Service.exe",
-        "Microsoft.SharePoint.exe"
+        "Microsoft.SharePoint.exe",
+        "OneDriveSetup.exe"
     };
 
     public static bool IsOfficialMicrosoftOneDrive(string path)
@@ -68,6 +69,25 @@ public static class KnownBenignActivity
     }
 
 
+    public static bool IsOfficialMicrosoftOneDriveSetup(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var root = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Microsoft", "OneDrive")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!Path.GetFileName(actual).Equals("OneDriveSetup.exe", StringComparison.OrdinalIgnoreCase) ||
+                !File.Exists(actual) || !actual.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return false;
+            var relative = actual[root.Length..].Replace('/', '\\');
+            if (!relative.Equals(@"Update\OneDriveSetup.exe", StringComparison.OrdinalIgnoreCase)) return false;
+            return IsTrustedMicrosoftPublisher(FileSignatureTrust.TrustedPublisher(actual));
+        }
+        catch { return false; }
+    }
+
+
     public static bool IsOfficialMicrosoftSysmon(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
@@ -90,9 +110,12 @@ public static class KnownBenignActivity
         // IFEO and SilentProcessExit are never covered by this helper.
         if (!IsOrdinaryUserRunKey(target)) return false;
         if (IsOfficialGoogleChrome(image)) return true;
-        return IsOfficialMicrosoftEdge(image) &&
-               target.Contains("\\MicrosoftEdgeAutoLaunch_", StringComparison.OrdinalIgnoreCase) &&
-               details.Contains("--win-session-start", StringComparison.OrdinalIgnoreCase);
+        if (IsOfficialMicrosoftEdge(image) &&
+            target.Contains("\\MicrosoftEdgeAutoLaunch_", StringComparison.OrdinalIgnoreCase) &&
+            details.Contains("--win-session-start", StringComparison.OrdinalIgnoreCase)) return true;
+        return IsOfficialMicrosoftOneDriveSetup(image) &&
+               (target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) ||
+                details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase));
     }
 
     public static bool IsOfficialGoogleChrome(string path)
@@ -140,6 +163,34 @@ public static class KnownBenignActivity
         catch { return false; }
     }
 
+    public static bool IsOfficialGitHubDesktopBundledGit(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!Path.GetFileName(actual).Equals("git-remote-https.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(actual)) return false;
+
+            var root = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "GitHubDesktop")).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!actual.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return false;
+
+            var relative = actual[root.Length..].Replace('/', '\\');
+            var match = Regex.Match(relative,
+                @"^(app-[^\\]+)\\resources\\app\\git\\mingw64\\bin\\git-remote-https\.exe$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success) return false;
+
+            var desktop = Path.Combine(root, match.Groups[1].Value, "GitHubDesktop.exe");
+            if (!IsOfficialGitHubDesktop(desktop)) return false;
+
+            return IsTrustedGitForWindowsPublisher(FileSignatureTrust.TrustedPublisher(actual));
+        }
+        catch { return false; }
+    }
+
+
     public static bool IsOfficialChromeRegistryEvent(SecurityEvent item)
     {
         if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
@@ -167,6 +218,34 @@ public static class KnownBenignActivity
                IsKnownBenignRegistryPersistence(process, target, details);
     }
 
+    public static bool IsOfficialOneDriveRegistryEvent(SecurityEvent item)
+    {
+        if (item.Time < DateTimeOffset.Now.AddDays(-2) ||
+            !item.Category.Equals("Comportamiento", StringComparison.OrdinalIgnoreCase) ||
+            !item.Title.Equals("Cambio de inicio automático en registro", StringComparison.OrdinalIgnoreCase) ||
+            !item.Evidence.Contains("Regla: GX-REGISTRY-PERSISTENCE", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var process = EvidenceField(item.Evidence, "Proceso");
+        var target = EvidenceField(item.Evidence, "Objetivo");
+        var details = EvidenceField(item.Evidence, "Detalles") ?? string.Empty;
+        if (process is null || target is null || !IsOrdinaryUserRunKey(target)) return false;
+
+        if (IsOfficialMicrosoftOneDriveSetup(process) &&
+            (target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) || details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase))) return true;
+
+        // OneDriveSetup.exe is transient and may already be deleted when the dashboard re-evaluates
+        // the event. For cleanup only, accept the exact updater location when the current OneDrive
+        // installation is still Microsoft-signed and the Run entry is clearly OneDrive-related.
+        if (!IsExpectedOneDriveSetupPath(process) ||
+            !(target.Contains("OneDrive", StringComparison.OrdinalIgnoreCase) || details.Contains("OneDrive", StringComparison.OrdinalIgnoreCase))) return false;
+
+        var currentOneDrive = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Microsoft", "OneDrive", "OneDrive.exe");
+        return IsOfficialMicrosoftOneDrive(currentOneDrive);
+    }
+
+
     public static bool IsOfficialGitHubDesktopNetworkEvent(SecurityEvent item)
     {
         if (item.Time < DateTimeOffset.Now.AddDays(-7) ||
@@ -174,7 +253,8 @@ public static class KnownBenignActivity
             !item.Title.Equals("Conexión desde programa de carpeta sensible", StringComparison.OrdinalIgnoreCase) ||
             !item.Evidence.Contains("Regla: GX-USERPATH-NETWORK", StringComparison.OrdinalIgnoreCase)) return false;
         var process = EvidenceField(item.Evidence, "Proceso");
-        return process is not null && IsOfficialGitHubDesktop(process);
+        return process is not null &&
+               (IsOfficialGitHubDesktop(process) || IsOfficialGitHubDesktopBundledGit(process));
     }
 
     public static bool IsTrustedLoadedLibraryEvent(SecurityEvent item)
@@ -385,6 +465,20 @@ public static class KnownBenignActivity
         return normalized.Contains("\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", StringComparison.OrdinalIgnoreCase);
     }
 
+    static bool IsExpectedOneDriveSetupPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var expected = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Microsoft", "OneDrive", "Update", "OneDriveSetup.exe"));
+            var actual = Path.GetFullPath(path.Trim().Trim('"'));
+            return actual.Equals(expected, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
     static bool IsUnderProgramFiles(string actual, string relativeRoot)
     {
         foreach (var folder in new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 })
@@ -419,6 +513,14 @@ public static class KnownBenignActivity
         return name.Equals("GitHub, Inc.", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("GitHub, Inc", StringComparison.OrdinalIgnoreCase) ||
                name.Equals("GitHub", StringComparison.OrdinalIgnoreCase);
+    }
+
+    static bool IsTrustedGitForWindowsPublisher(string? publisher)
+    {
+        if (string.IsNullOrWhiteSpace(publisher)) return false;
+        var bracket = publisher.LastIndexOf(" [", StringComparison.Ordinal);
+        var name = (bracket > 0 ? publisher[..bracket] : publisher).Trim();
+        return name.Equals("Johannes Schindelin", StringComparison.OrdinalIgnoreCase);
     }
 
     static bool IsDotNetPublisher(string? publisher) => publisher is not null &&

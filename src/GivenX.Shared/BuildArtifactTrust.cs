@@ -51,6 +51,7 @@ public static class BuildArtifactTrustStore
         KnownBenignActivity.IsOfficialOneDriveNetworkEvent(item) ||
         KnownBenignActivity.IsOfficialChromeRegistryEvent(item) ||
         KnownBenignActivity.IsOfficialEdgeRegistryEvent(item) ||
+        KnownBenignActivity.IsOfficialOneDriveRegistryEvent(item) ||
         KnownBenignActivity.IsOfficialGitHubDesktopNetworkEvent(item) ||
         KnownBenignActivity.IsTrustedLoadedLibraryEvent(item) ||
         KnownBenignActivity.IsTrustedUserPathNetworkEvent(item) ||
